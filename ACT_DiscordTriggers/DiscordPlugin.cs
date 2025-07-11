@@ -344,8 +344,8 @@ namespace ACT_DiscordTriggers {
       LoadSettings();
 
       //Discord Bot Stuff
-      DiscordClient.BotReady += BotReady;
-      DiscordClient.Log += Log;
+      DiscordApiClient.BotReady += BotReady;
+      DiscordApiClient.Log += Log;
 
       if (chkAutoConnect.Checked)
         discordConnectbtn_Click(null, EventArgs.Empty);
@@ -358,7 +358,7 @@ namespace ACT_DiscordTriggers {
       ActGlobals.oFormActMain.PlaySoundMethod = oldSound;
       SaveSettings();
       try {
-        await DiscordClient.deInIt();
+        await DiscordApiClient.deInIt();
       } catch (Exception ex) {
         ActGlobals.oFormActMain.WriteExceptionLog(ex, "Error with DeInit of Discord Plugin.");
       }
@@ -393,7 +393,7 @@ namespace ACT_DiscordTriggers {
     private void speak(string text) {
       Log("Playing TTS for text: " + text);
       try {
-        DiscordClient.Speak(text, cmbTTS.SelectedItem.ToString(), sliderTTSVol.Value, sliderTTSSpeed.Value);
+        DiscordApiClient.Speak(text, cmbTTS.SelectedItem.ToString(), sliderTTSVol.Value, sliderTTSSpeed.Value);
       } catch (Exception ex) {
         Log("Error playing TTS");
         Log(ex.Message);
@@ -403,7 +403,7 @@ namespace ACT_DiscordTriggers {
     private void speakFile(string path, int volume) {
       Log("Playing Audio file: " + path);
       try {
-        DiscordClient.SpeakFile(path);
+        DiscordApiClient.SpeakFile(path);
       } catch (Exception ex) {
         Log("Error playing File");
         Log(ex.Message);
@@ -418,7 +418,7 @@ namespace ACT_DiscordTriggers {
 
     private void populateServers() {
       try {
-        string[] servers = DiscordClient.getServers();
+        string[] servers = DiscordApiClient.getServers();
         Log("Found " + servers.Length + " discord server(s).");
 
         cmbServer.Items.Clear();
@@ -438,7 +438,7 @@ namespace ACT_DiscordTriggers {
     private void populateChannels(string server) {
       try {
         cmbChan.Items.Clear();
-        cmbChan.Items.AddRange(DiscordClient.getChannels(server));
+        cmbChan.Items.AddRange(DiscordApiClient.getChannelNames(server));
         if (cmbChan.Items.Count > 0) {
           cmbChan.SelectedIndex = 0;
           Log("Found " + cmbChan.Items.Count + " available voice channel(s) for " + server);
@@ -456,12 +456,12 @@ namespace ACT_DiscordTriggers {
     private async void btnJoin_Click(object sender, EventArgs e) {
 
       btnJoin.Enabled = false;
-      if (await DiscordClient.JoinChannel(cmbServer.SelectedItem.ToString(), cmbChan.SelectedItem.ToString())) {
+      if (await DiscordApiClient.JoinChannel(cmbServer.SelectedItem.ToString(), cmbChan.SelectedItem.ToString())) {
         btnLeave.Enabled = true;
         ActGlobals.oFormActMain.PlayTtsMethod = speak;
         ActGlobals.oFormActMain.PlaySoundMethod = speakFile;
       } else {
-        Log("Unable to join channel. Does your bot have permission to join this channel?");
+        Log("Unable to join channel, does your bot have permission to join this channel?");
         btnJoin.Enabled = true;
         populateServers();
       }
@@ -470,7 +470,7 @@ namespace ACT_DiscordTriggers {
     private void btnLeave_Click(object sender, EventArgs e) {
       btnLeave.Enabled = false;
       try {
-        DiscordClient.LeaveChannel();
+        DiscordApiClient.LeaveChannel();
         btnJoin.Enabled = true;
         btnLeave.Enabled = false;
         Log("Left channel.");
@@ -490,11 +490,11 @@ namespace ACT_DiscordTriggers {
 
     private void discordConnectbtn_Click(object sender, EventArgs e) {
 
-      if (DiscordClient.IsConnected()) {
+      if (DiscordApiClient.IsConnected()) {
         Log("Already connected to Discord.");
         return;
       }
-      DiscordClient.InIt(txtToken.Text);
+      DiscordApiClient.Init(txtToken.Text);
     }
 
     private void LogList_KeyUp(object sender, KeyEventArgs e) {

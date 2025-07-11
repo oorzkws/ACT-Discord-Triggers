@@ -1,20 +1,22 @@
-﻿using Discord;
-using Discord.Audio;
-using Discord.WebSocket;
+﻿using DSharpPlus;
+using DSharpPlus.Entities;
+using DSharpPlus.EventArgs;
+using DSharpPlus.VoiceNext;
+using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Speech.AudioFormat;
 using System.Speech.Synthesis;
 using System.Threading.Tasks;
 
 namespace DiscordAPI {
-  public static class DiscordClient {
-    private static DiscordSocketClient bot;
-    private static IAudioClient audioClient;
-    private static AudioOutStream voiceStream;
-    private static SocketVoiceChannel voiceChannel;
+  public static class DiscordApiClient {
+    private static DSharpPlus.DiscordClient bot;
+    private static VoiceTransmitSink voiceStream;
+    private static VoiceNextConnection voiceChannel;
 
     public delegate void BotLoaded();
     public static BotLoaded BotReady;
@@ -22,61 +24,69 @@ namespace DiscordAPI {
     public delegate void BotMessage(string message);
     public static BotMessage Log;
 
-    public static async void InIt(string logintoken) {
+    public async static void Init(string logintoken) {
       try {
-        var config = new DiscordSocketConfig {
-          GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildVoiceStates
-        };
-        bot = new DiscordSocketClient(config);
+        bot = new DSharpPlus.DiscordClient(new DiscordConfiguration() {
+          Token = logintoken,
+          TokenType = TokenType.Bot,
+          Intents = DiscordIntents.Guilds | DiscordIntents.GuildVoiceStates,
+          MinimumLogLevel = LogLevel.Debug
+        });
+        bot.UseVoiceNext();
       } catch (NotSupportedException ex) {
         Log?.Invoke("Unsupported Operating System.");
         Log?.Invoke(ex.Message);
       }
 
       try {
-        bot.Log += Bot_Log;
         bot.Ready += Bot_Ready;
-        await bot.LoginAsync(TokenType.Bot, logintoken);
-        await bot.StartAsync();
+        bot.GuildDownloadCompleted += Bot_Downloaded;
+        bot.VoiceStateUpdated += Bot_VoiceStateChanged;
+        await bot.ConnectAsync();
       } catch (Exception ex) {
         Log?.Invoke(ex.Message);
         Log?.Invoke("Error connecting to Discord.");
       }
     }
 
-    public static async Task deInIt() {
+    public async static Task deInIt() {
       bot.Ready -= Bot_Ready;
-      bot.Log -= Bot_Log;
-      if (audioClient?.ConnectionState == ConnectionState.Connected) {
-        LeaveChannel();
-      }
-      await bot.StopAsync();
-      await bot.LogoutAsync();
+      bot.GuildDownloadCompleted -= Bot_Downloaded;
+      bot.VoiceStateUpdated -= Bot_VoiceStateChanged;
+      await bot.DisconnectAsync();
     }
 
     public static bool IsConnected() {
-      return bot?.ConnectionState == ConnectionState.Connected;
+
+      return bot?.ConnectionLock.IsSet ?? false;
     }
 
-    private static Task Bot_Log(LogMessage arg) {
-      if (arg.Message.Equals("Unknown OpCode (Hello)"))
-        return Task.CompletedTask;
-      Log?.Invoke($"[{arg.Source}] {arg.Message}");
-      return Task.CompletedTask;
-    }
+    //TODO: Catch stdout for ACT log
 
-    private static async Task Bot_Ready() {
-      await bot.SetGameAsync("with ACT Triggers");
-      Log?.Invoke("Bot in ready state. Populating servers...");
+    async private static Task Bot_Ready(DSharpPlus.DiscordClient client, ReadyEventArgs e) {
+      Log?.Invoke("Bot in ready state, awaiting server metadata...");
+    }
+    
+    async private static Task Bot_Downloaded(DSharpPlus.DiscordClient client, GuildDownloadCompletedEventArgs e) {
+      Log?.Invoke("Server metadata downloaded, populating lists...");
       BotReady?.Invoke();
+    }
+
+    async private static Task Bot_VoiceStateChanged(DSharpPlus.DiscordClient client, VoiceStateUpdateEventArgs e) {
+      if (voiceChannel != null && client.CurrentUser == e.User && e.After.Channel == null){
+        Log?.Invoke("Voice channel disconnect received.");
+        LeaveChannel();
+      }
     }
 
     public static string[] getServers() {
       List<string> servers = new List<string>();
 
       try {
-        foreach (SocketGuild g in bot.Guilds)
+        foreach (var kv in bot.Guilds) {
+          var g = kv.Value;
           servers.Add(g.Name);
+        }
       } catch (Exception ex) {
         Log?.Invoke("Error loading servers in DiscordAPI#getServers().");
         Log?.Invoke(ex.Message);
@@ -84,15 +94,16 @@ namespace DiscordAPI {
 
       return servers.ToArray();
     }
-
-    public static string[] getChannels(string server) {
+    
+    public static string[] getChannelNames(string server) {
       List<string> discordchannels = new List<string>();
 
-      foreach (SocketGuild g in bot.Guilds) {
+      foreach (var kv in bot.Guilds) {
+        var g = kv.Value;
         if (g.Name == server) {
-          var channels = new List<SocketVoiceChannel>(g.VoiceChannels);
+          var channels = new List<DiscordChannel>(g.Channels.Select(pair => pair.Value).Where(c => c.Type == ChannelType.Voice));
           channels.Sort((x, y) => x.Position.CompareTo(y.Position));
-          foreach (SocketVoiceChannel channel in channels)
+          foreach (DiscordChannel channel in channels)
             discordchannels.Add(channel.Name);
           break;
         }
@@ -101,14 +112,15 @@ namespace DiscordAPI {
       return discordchannels.ToArray();
     }
 
-    private static SocketVoiceChannel[] getSocketChannels(string server) {
-      List<SocketVoiceChannel> discordchannels = new List<SocketVoiceChannel>();
+    private static DiscordChannel[] getChannels(string server) {
+      List<DiscordChannel> discordchannels = new List<DiscordChannel>();
 
-      foreach (SocketGuild g in bot.Guilds) {
+      foreach (var kv in bot.Guilds) {
+        var g = kv.Value;
         if (g.Name == server) {
-          var channels = new List<SocketVoiceChannel>(g.VoiceChannels);
+          var channels = new List<DiscordChannel>(g.Channels.Select(pair => pair.Value).Where(c => c.Type == ChannelType.Voice));
           channels.Sort((x, y) => x.Position.CompareTo(y.Position));
-          foreach (SocketVoiceChannel channel in channels)
+          foreach (DiscordChannel channel in channels)
             discordchannels.Add(channel);
           break;
         }
@@ -118,35 +130,41 @@ namespace DiscordAPI {
     }
 
     public static void SetGameAsync(string text) {
-      bot.SetGameAsync(text);
+      //bot.SetGameAsync(text);
     }
 
-    public static async Task<bool> JoinChannel(string server, string channel) {
-      SocketVoiceChannel chan = null;
+    public async static Task<bool> JoinChannel(string server, string channel) {
+      DiscordChannel chan = null;
 
-      foreach (SocketVoiceChannel vchannel in getSocketChannels(server))
+      foreach (var vchannel in getChannels(server))
         if (vchannel.Name == channel)
           chan = vchannel;
 
       if (chan != null) {
         try {
-          audioClient = await chan.ConnectAsync();
-          voiceChannel = chan;
+          voiceChannel = await chan.ConnectAsync();
+          voiceStream = voiceChannel.GetTransmitSink();
           Log?.Invoke("Joined channel: " + chan.Name);
         } catch (Exception ex) {
           Log?.Invoke("Error joining channel.");
-          Log?.Invoke(ex.Message);
+          Log?.Invoke($"Inner exception: {ex.InnerException?.Message ?? "null"}");
+          Log?.Invoke($"Exception: {ex.Message}");
           return false;
         }
       }
       return true;
     }
 
-    public static async void LeaveChannel() {
-      voiceStream?.Close();
-      voiceStream = null;
-      await audioClient.StopAsync();
-      await voiceChannel.DisconnectAsync();
+    public static void LeaveChannel() {
+      try {
+        voiceStream = null;
+        voiceChannel?.Disconnect();
+        voiceChannel = null;
+      } catch (Exception ex) {
+        Log?.Invoke("Error leaving channel.");
+        Log?.Invoke($"Inner exception: {ex.InnerException?.Message ?? "null"}");
+        Log?.Invoke($"Exception: {ex.Message}");
+      }
     }
 
     private static object speaklock = new object();
@@ -154,8 +172,6 @@ namespace DiscordAPI {
 
     public static void Speak(string text, string voice, int vol, int speed) {
       lock (speaklock) {
-        if (voiceStream == null)
-          voiceStream = audioClient.CreatePCMStream(AudioApplication.Voice, 128 * 1024);
         SpeechSynthesizer tts = new SpeechSynthesizer();
         tts.SelectVoice(voice);
         tts.Volume = vol * 5;
@@ -165,22 +181,18 @@ namespace DiscordAPI {
 
         tts.Speak(text);
         ms.Seek(0, SeekOrigin.Begin);
-        ms.CopyTo(voiceStream);
-        voiceStream.Flush();
+        ms.CopyToAsync(voiceStream).GetAwaiter().GetResult();
       }
     }
 
     public static void SpeakFile(string path) {
       lock (speaklock) {
-        if (voiceStream == null)
-          voiceStream = audioClient.CreatePCMStream(AudioApplication.Voice, 128 * 1024);
         try {
           WaveFileReader wav = new WaveFileReader(path);
           WaveFormat waveFormat = new WaveFormat(48000, 16, 2);
           WaveStream pcm = WaveFormatConversionStream.CreatePcmStream(wav);
           WaveFormatConversionStream output = new WaveFormatConversionStream(waveFormat, pcm);
-          output.CopyTo(voiceStream);
-          voiceStream.Flush();
+          output.CopyToAsync(voiceStream).GetAwaiter().GetResult();
         } catch (Exception ex) {
           Log?.Invoke("Unable to read file: " + ex.Message);
         }

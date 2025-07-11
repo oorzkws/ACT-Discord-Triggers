@@ -17,6 +17,8 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
+    <PublishSingleFile>true</PublishSingleFile>
+    <OutputType>Library</OutputType>
     <OutputPath>bin\$(Configuration)\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
@@ -30,7 +32,7 @@
   <ItemGroup>
     <Reference Include="Advanced Combat Tracker">
       <HintPath Condition="Exists('..\packages\Advanced Combat Tracker.exe')">..\packages\Advanced Combat Tracker.exe</HintPath>
-      <HintPath Condition="Exists('C:\Program Files (x86)\Advanced Combat Tracker\')">C:\Program Files (x86)\Advanced Combat Tracker\Advanced Combat Tracker.exe</HintPath>
+      <HintPath Condition="Exists('D:\Utilities\ACT\')">D:\Utilities\ACT\Advanced Combat Tracker.exe</HintPath>
     </Reference>
     <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Management" />
