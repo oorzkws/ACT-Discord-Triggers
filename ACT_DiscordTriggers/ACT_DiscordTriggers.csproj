@@ -54,8 +54,8 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="costura-win-x86\libsodium.dll" />
-    <EmbeddedResource Include="costura-win-x86\opus.dll" />
+    <EmbeddedResource Include="costura-win-x86\libopus.dll" />
     <EmbeddedResource Include="costura-win-x64\libsodium.dll" />
-    <EmbeddedResource Include="costura-win-x64\opus.dll" />
+    <EmbeddedResource Include="costura-win-x64\libopus.dll" />
   </ItemGroup>
 </Project>

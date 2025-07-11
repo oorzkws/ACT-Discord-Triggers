@@ -7,11 +7,11 @@
     </ExcludeAssemblies>
 	<UnmanagedWinX86Assemblies>
       libsodium
-      opus
+      libopus
     </UnmanagedWinX86Assemblies>
 	<UnmanagedWinX64Assemblies>
       libsodium
-      opus
+      libopus
     </UnmanagedWinX64Assemblies>
   </Costura>
 </Weavers>
