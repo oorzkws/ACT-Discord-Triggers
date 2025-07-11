@@ -491,7 +491,9 @@ namespace ACT_DiscordTriggers {
     private void discordConnectbtn_Click(object sender, EventArgs e) {
 
       if (DiscordApiClient.IsConnected()) {
-        Log("Already connected to Discord.");
+        Log("Already connected to Discord, clearing channel connections...");
+        btnJoin.Enabled = true;
+        DiscordApiClient.LeaveChannel();
         return;
       }
       DiscordApiClient.Init(txtToken.Text);
